@@ -16,6 +16,7 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.action_chains import ActionChains
 
 
 class LinkedInApplicantScraper:
@@ -86,11 +87,20 @@ class LinkedInApplicantScraper:
         try:
             # Navigate to job URL
             self.driver.get(self.job_url)
-            view_applicants_btn = self.wait.until(
-                EC.element_to_be_clickable(
-                    (By.CLASS_NAME, 'artdeco-button__text'))
-            )
-            view_applicants_btn.click()
+
+            try:
+                view_applicants_btn = self.wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        '//button[contains(@class, "artdeco-button--secondary") and contains(span, "View applicants")]'
+                    ))
+                )
+                view_applicants_btn.click()
+
+                time.sleep(50)
+
+            except Exception as e:
+                print(f"First selector strategy failed: {e}")
 
             print("Navigated to applicants page")
 
