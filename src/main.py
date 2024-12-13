@@ -239,7 +239,7 @@ class LinkedInApplicantScraper:
             view_applicants_btn.click()
 
             # Extended wait time to ensure page loads completely
-            time.sleep(10)  # Increased from 5 to 10 seconds
+            time.sleep(4)
 
             # Try multiple strategies to find applicant list
             try:
@@ -267,6 +267,22 @@ class LinkedInApplicantScraper:
                           self.driver.page_source[:1000])
 
                     raise Exception("Unable to locate applicant list")
+            try:
+                pagination_items = self.driver.find_elements(
+                    By.CSS_SELECTOR, "li.artdeco-pagination__indicator.artdeco-pagination__indicator--number.ember-view"
+                )
+
+                # Get the last pagination item
+                last_item = pagination_items[-1] if pagination_items else None
+
+                if last_item:
+                    # Find the page number inside the button -> span tag
+                    page_number = last_item.find_element(By.CSS_SELECTOR, "button span").text
+                    print(f"The last pagination page has number: {page_number}")
+                else:
+                    print("No pagination items found.")
+            except Exception as e:
+                print(f"Failed to find pagination items: {e}")
 
             print(f"Found {len(applicant_list)} applicants")
             return applicant_list
