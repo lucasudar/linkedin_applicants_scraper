@@ -1,9 +1,5 @@
-import datetime
 import time
-import sys
-import csv
 import re
-from typing import List
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -11,13 +7,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    ElementClickInterceptedException
+    NoSuchElementException
 )
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.action_chains import ActionChains
 
 
 class LinkedInApplicantScraper:
@@ -190,6 +183,12 @@ class LinkedInApplicantScraper:
                     ))
                 )
 
+                profile_link = self.driver.find_element(
+                    By.XPATH, '//a[contains(@class, "artdeco-button--tertiary")]')
+                partial_link = profile_link.get_attribute("href")
+                full_profile_link = partial_link if "https://www.linkedin.com" in partial_link else f"https://www.linkedin.com{
+                    partial_link}"
+
                 email = self.driver.find_element(
                     By.XPATH, "//a[contains(@href, 'mailto:')]//span[not(contains(@class, 'a11y-text'))]"
                 ).text
@@ -208,6 +207,7 @@ class LinkedInApplicantScraper:
                     "location": location,
                     "email": email,
                     "phone": phone,
+                    "profile_link": full_profile_link,
                 }
                 print(applicant_data)
                 all_applicants_data.append(applicant_data)
@@ -220,76 +220,6 @@ class LinkedInApplicantScraper:
                 print(f"Error processing applicant {index}: {applicant_error}")
 
         return all_applicants_data
-
-    def navigate_to_job_applicants(self):
-        """
-        Navigate to job applicants page and prepare the list of applicants
-        """
-        try:
-            # Navigate to job URL
-            self.driver.get(self.job_url)
-
-            # Wait for applicants view button and click
-            view_applicants_btn = self.wait.until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    '//button[contains(@class, "artdeco-button--secondary") and contains(span, "View applicants")]'
-                ))
-            )
-            view_applicants_btn.click()
-
-            # Extended wait time to ensure page loads completely
-            time.sleep(4)
-
-            # Try multiple strategies to find applicant list
-            try:
-                # First try: CSS selector
-                applicant_list = self.wait.until(
-                    EC.presence_of_all_elements_located((
-                        By.CSS_SELECTOR, 'li.hiring-applicants__list-item'
-                    ))
-                )
-            except TimeoutException:
-                try:
-                    # Fallback 1: XPath selector
-                    applicant_list = self.wait.until(
-                        EC.presence_of_all_elements_located((
-                            By.XPATH, '//li[contains(@class, "hiring-applicants__list-item")]'
-                        ))
-                    )
-                except TimeoutException:
-                    # Fallback 2: Check if we're on the right page
-                    print("Could not find applicant list. Checking page status.")
-
-                    # Print current page source or URL for debugging
-                    print("Current URL:", self.driver.current_url)
-                    print("Page source snippet:",
-                          self.driver.page_source[:1000])
-
-                    raise Exception("Unable to locate applicant list")
-            try:
-                pagination_items = self.driver.find_elements(
-                    By.CSS_SELECTOR, "li.artdeco-pagination__indicator.artdeco-pagination__indicator--number.ember-view"
-                )
-
-                # Get the last pagination item
-                last_item = pagination_items[-1] if pagination_items else None
-
-                if last_item:
-                    # Find the page number inside the button -> span tag
-                    page_number = last_item.find_element(By.CSS_SELECTOR, "button span").text
-                    print(f"The last pagination page has number: {page_number}")
-                else:
-                    print("No pagination items found.")
-            except Exception as e:
-                print(f"Failed to find pagination items: {e}")
-
-            print(f"Found {len(applicant_list)} applicants")
-            return applicant_list
-
-        except Exception as e:
-            print(f"Failed to navigate to applicants: {e}")
-            return []
 
     def run(self):
         """
