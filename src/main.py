@@ -154,7 +154,7 @@ class LinkedInApplicantScraper:
                 )
                 more_button.click()
 
-                # Wait for dropdown to load and extract email/phone
+                # Wait for dropdown to load and extract link/email/phone
                 self.wait.until(
                     EC.presence_of_element_located((
                         By.XPATH, "//ul[@aria-live='polite']"
@@ -176,6 +176,9 @@ class LinkedInApplicantScraper:
 
                 if len(phone_elements) >= 2:
                     phone = phone_elements[3].text.strip()
+                    # if phone number is starting with +1+1 exclude first +1
+                    if phone.startswith("+1+1"):
+                        phone = phone[2:]
                 else:
                     phone = "Phone number not found"
 
