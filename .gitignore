@@ -1,2 +1,4 @@
 venv
 config/app-config.properties
+__pycache__
+.DS_Store

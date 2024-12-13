@@ -1,5 +1,6 @@
 import time
 import re
+import csv
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -43,164 +44,168 @@ class LinkedInApplicantScraper:
         Log in to LinkedIn
         """
         try:
-            # Navigate to LinkedIn login page
             self.driver.get('https://www.linkedin.com/login')
 
-            # Wait for username field and enter credentials
             username_field = self.wait.until(
                 EC.presence_of_element_located((By.ID, 'username'))
             )
             username_field.send_keys(self.username)
 
-            # Enter password
             password_field = self.driver.find_element(By.ID, 'password')
             password_field.send_keys(self.password)
 
-            # Click login button
             login_btn = self.driver.find_element(
                 By.CSS_SELECTOR, 'button[type="submit"]')
             login_btn.click()
 
-            # Wait for login to complete
-            self.wait.until(
-                EC.url_contains('feed')
-            )
+            self.wait.until(EC.url_contains('feed'))
             print("Successfully logged in to LinkedIn")
-
         except Exception as e:
             print(f"Login failed: {e}")
             raise
 
-    def navigate_to_job_applicants(self):
+    def process_applicant(self, applicant):
         """
-        Navigate to job applicants page
+        Process a single applicant and return their details
         """
         try:
-            # Navigate to job URL
+            applicant_link = applicant.find_element(
+                By.XPATH, './/a[contains(@class, "ember-view")]')
+            applicant_link.click()
+            time.sleep(2)
+
+            self.wait.until(EC.presence_of_element_located(
+                (By.CSS_SELECTOR, '.hiring-applicant-header')))
+
+            applicant_name = self.driver.find_element(
+                By.CSS_SELECTOR, '.hiring-applicant-header h1').text
+            match = re.match(r"^(.*?)’s", applicant_name)
+            applicant_name = match.group(1).strip() if match else "Unknown"
+
+            location_element = self.driver.find_element(
+                By.CSS_SELECTOR, ".hiring-applicant-header .t-16:nth-of-type(2)"
+            )
+            location = location_element.text.strip() if location_element else "Unknown location"
+
+            more_button = self.driver.find_element(
+                By.XPATH, "//button[contains(@class, 'artdeco-dropdown__trigger') and contains(@class, 'artdeco-button--secondary')]"
+            )
+            more_button.click()
+            time.sleep(2)
+
+            self.wait.until(EC.presence_of_element_located(
+                (By.XPATH, "//ul[@aria-live='polite']")))
+
+            profile_link = self.driver.find_element(
+                By.XPATH, '//a[contains(@class, "artdeco-button--tertiary")]'
+            ).get_attribute("href")
+            email_elements = self.driver.find_elements(
+                By.XPATH, "//a[contains(@href, 'mailto:')]//span[not(contains(@class, 'a11y-text'))]"
+            )
+            email = email_elements[0].text if email_elements else "Email not found"
+
+            phone_elements = self.driver.find_elements(
+                By.XPATH, "//div[contains(@class, 'hiring-applicant-header-actions__more-content-dropdown-item-info')]//span[not(contains(@class, 't-light'))]"
+            )
+            phone = phone_elements[3].text.strip() if len(
+                phone_elements) >= 4 else "Phone number not found"
+
+            return {
+                "name": applicant_name,
+                "location": location,
+                "email": email,
+                "phone": phone,
+                "profile_link": profile_link,
+            }
+        except Exception as e:
+            print(f"Error processing applicant: {e}")
+            return None
+
+    def navigate_and_process_applicants(self):
+        """
+        Navigate to the job applicants page, process applicants, and handle pagination
+        """
+        try:
             self.driver.get(self.job_url)
 
-            try:
-                view_applicants_btn = self.wait.until(
-                    EC.element_to_be_clickable((
-                        By.XPATH,
-                        '//button[contains(@class, "artdeco-button--secondary") and contains(span, "View applicants")]'
-                    ))
+            view_applicants_btn = self.wait.until(
+                EC.element_to_be_clickable(
+                    (By.XPATH,
+                     '//button[contains(@class, "artdeco-button--secondary") and contains(span, "View applicants")]')
                 )
-                view_applicants_btn.click()
+            )
+            view_applicants_btn.click()
+            time.sleep(2)
 
-                time.sleep(4)
+            all_applicants_data = []
+
+            try:
+                pagination_items = self.driver.find_elements(
+                    By.CSS_SELECTOR, "li.artdeco-pagination__indicator.artdeco-pagination__indicator--number.ember-view"
+                )
+
+                # Get the last pagination page number
+                last_item = pagination_items[-1] if pagination_items else None
+                total_pages = int(
+                    last_item.find_element(By.CSS_SELECTOR, "button span").text
+                ) if last_item else 1
+                print(f"Total pages: {total_pages}")
 
             except Exception as e:
-                print(f"First selector strategy failed: {e}")
+                print(f"Failed to determine pagination: {e}")
+                total_pages = 1
 
-            print("Navigated to applicants page")
+            for page in range(1, total_pages + 1):
+                print(f"Processing page {page}/{total_pages}")
 
-            # Find all applicant list items
-            applicant_list = self.wait.until(
-                EC.presence_of_all_elements_located((
-                    By.CSS_SELECTOR, 'li.hiring-applicants__list-item'
-                ))
-            )
+                applicant_list = self.wait.until(
+                    EC.presence_of_all_elements_located(
+                        (By.CSS_SELECTOR, 'li.hiring-applicants__list-item'))
+                )
 
-            return applicant_list
+                for applicant in applicant_list:
+                    applicant_data = self.process_applicant(applicant)
+                    if applicant_data:
+                        all_applicants_data.append(applicant_data)
 
+                # Navigate to the next page if not the last page
+                if page < total_pages:
+                    next_page_button = self.driver.find_element(
+                        By.XPATH, f'//button[@aria-label="Page {page + 1}"]'
+                    )
+                    next_page_button.click()
+                    time.sleep(3)
+
+            return all_applicants_data
         except Exception as e:
-            print(f"Failed to navigate to applicants: {e}")
+            print(f"Error processing applicants: {e}")
             raise
 
-    def process_applicants(self):
+    def save_applicants_to_csv(self, applicants_data, filename="applicants.csv"):
         """
-        Process each applicant in the list
+        Save the collected applicant data into a CSV file
+
+        :param applicants_data: List of applicant data (dictionaries)
+        :param filename: Name of the CSV file
         """
-        # Get the list of applicants
-        applicant_list = self.navigate_to_job_applicants()
+        try:
+            # Define CSV fieldnames (keys from the first applicant's dictionary)
+            fieldnames = ["name", "location", "email", "phone", "profile_link"]
 
-        # Collected data for all applicants
-        all_applicants_data = []
+            # Open the CSV file in write mode
+            with open(filename, mode="w", newline="", encoding="utf-8") as file:
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
 
-        # Iterate through each applicant
-        for index, applicant in enumerate(applicant_list, 1):
-            try:
-                applicant_link = applicant.find_element(
-                    By.XPATH, './/a[contains(@class, "ember-view")]'
-                )
+                # Write the header row (field names)
+                writer.writeheader()
 
-                # Click on the applicant link
-                applicant_link.click()
-                time.sleep(2)
+                # Write the data rows
+                for applicant in applicants_data:
+                    writer.writerow(applicant)
 
-                # Wait for applicant details to load
-                self.wait.until(
-                    EC.presence_of_element_located((
-                        By.CSS_SELECTOR, '.hiring-applicant-header'
-                    ))
-                )
-
-                # Extract applicant details
-                applicant_name = self.driver.find_element(
-                    By.CSS_SELECTOR, '.hiring-applicant-header h1').text
-                match = re.match(r"^(.*?)’s", applicant_name)
-                if match:
-                    applicant_name = match.group(1).strip()
-                else:
-                    applicant_name = "Unknown"
-                location_element = self.driver.find_element(
-                    By.CSS_SELECTOR, ".hiring-applicant-header .t-16:nth-of-type(2)")
-                location = location_element.text.strip() if location_element else "Unknown location"
-
-                # Find and click the "More" button
-                more_button = self.driver.find_element(
-                    By.XPATH, "//button[contains(@class, 'artdeco-dropdown__trigger') and contains(@class, 'artdeco-button--secondary')]"
-                )
-                more_button.click()
-
-                # Wait for dropdown to load and extract link/email/phone
-                self.wait.until(
-                    EC.presence_of_element_located((
-                        By.XPATH, "//ul[@aria-live='polite']"
-                    ))
-                )
-
-                profile_link = self.driver.find_element(
-                    By.XPATH, '//a[contains(@class, "artdeco-button--tertiary")]')
-                partial_link = profile_link.get_attribute("href")
-                full_profile_link = partial_link if "https://www.linkedin.com" in partial_link else f"https://www.linkedin.com{
-                    partial_link}"
-
-                email = self.driver.find_element(
-                    By.XPATH, "//a[contains(@href, 'mailto:')]//span[not(contains(@class, 'a11y-text'))]"
-                ).text
-                phone_elements = self.driver.find_elements(
-                    By.XPATH, "//div[contains(@class, 'hiring-applicant-header-actions__more-content-dropdown-item-info')]//span[not(contains(@class, 't-light'))]"
-                )
-
-                if len(phone_elements) >= 2:
-                    phone = phone_elements[3].text.strip()
-                    # if phone number is starting with +1+1 exclude first +1
-                    if phone.startswith("+1+1"):
-                        phone = phone[2:]
-                else:
-                    phone = "Phone number not found"
-
-                # Save applicant data
-                applicant_data = {
-                    "name": applicant_name,
-                    "location": location,
-                    "email": email,
-                    "phone": phone,
-                    "profile_link": full_profile_link,
-                }
-                print(applicant_data)
-                all_applicants_data.append(applicant_data)
-
-                print(f"Processed applicant {index}: {applicant_name}")
-
-                time.sleep(2)
-
-            except Exception as applicant_error:
-                print(f"Error processing applicant {index}: {applicant_error}")
-
-        return all_applicants_data
+            print(f"Applicant data has been successfully saved to {filename}")
+        except Exception as e:
+            print(f"Failed to save applicants data to CSV: {e}")
 
     def run(self):
         """
@@ -209,20 +214,14 @@ class LinkedInApplicantScraper:
         try:
             self.login()
 
-            # Process all applicants and collect their data
-            all_applicants_data = self.process_applicants()
+            all_applicants_data = self.navigate_and_process_applicants()
 
-            # Save to CSV if data is collected
-            if all_applicants_data:
-                self.save_applicants_to_csv(all_applicants_data)
-            else:
-                print("No applicant data collected")
+            self.save_applicants_to_csv(all_applicants_data)
 
         except Exception as e:
             print(f"Scraping failed: {e}")
 
         finally:
-            # Always close the browser
             self.driver.quit()
 
 
