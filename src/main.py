@@ -6,9 +6,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    NoSuchElementException
-)
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -91,7 +88,7 @@ class LinkedInApplicantScraper:
                 )
                 view_applicants_btn.click()
 
-                time.sleep(10)
+                time.sleep(4)
 
             except Exception as e:
                 print(f"First selector strategy failed: {e}")
@@ -124,28 +121,9 @@ class LinkedInApplicantScraper:
         # Iterate through each applicant
         for index, applicant in enumerate(applicant_list, 1):
             try:
-                # Scroll to the applicant to ensure it's in view
-                self.driver.execute_script(
-                    "arguments[0].scrollIntoView({block: 'center'});", applicant)
-                time.sleep(1)
-
-                # Try multiple selector strategies
-                try:
-                    # First try: CSS selector
-                    applicant_link = applicant.find_element(
-                        By.CSS_SELECTOR, 'a.ember-view.hiring-applicants-list-item__link'
-                    )
-                except NoSuchElementException:
-                    try:
-                        # Fallback 1: XPath selector
-                        applicant_link = applicant.find_element(
-                            By.XPATH, './/a[contains(@class, "ember-view") and contains(@class, "hiring-applicants-list-item__link")]'
-                        )
-                    except NoSuchElementException:
-                        # Fallback 2: More generic selector
-                        applicant_link = applicant.find_element(
-                            By.XPATH, './/a[contains(@class, "ember-view")]'
-                        )
+                applicant_link = applicant.find_element(
+                    By.XPATH, './/a[contains(@class, "ember-view")]'
+                )
 
                 # Click on the applicant link
                 applicant_link.click()
