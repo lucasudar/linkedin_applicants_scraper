@@ -137,6 +137,9 @@ class LinkedInApplicantScraper:
             view_applicants_btn.click()
             time.sleep(2)
 
+            # delete query params from URL to unable filtering
+            self.driver.get(self.driver.current_url.split("/?")[0])
+
             all_applicants_data = []
 
             try:
